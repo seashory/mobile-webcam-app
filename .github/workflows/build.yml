@@ -34,20 +34,26 @@ jobs:
           cp -r lib_temp/* lib/
           rm -rf lib_temp
 
-      # 2. വിട്ടുപോയ എല്ലാ പാക്കേജുകളും കൃത്യമായി ആഡ് ചെയ്യുന്നു
+      # 2. minSdkVersion 21 ആക്കി അപ്‌ഡേറ്റ് ചെയ്യുന്നു
+      - name: Update minSdkVersion to 21
+        run: |
+          sed -i 's/minSdkVersion .*/minSdkVersion 21/g' android/app/build.gradle
+          sed -i 's/flutter.minSdkVersion/21/g' android/app/build.gradle
+
+      # 3. വിട്ടുപോയ എല്ലാ പാക്കേജുകളും ചേർക്കുന്നു
       - name: Add Required Dependencies
         run: |
           flutter pub add camera shelf shelf_router network_info_plus permission_handler cupertino_icons
 
-      # 3. Dependencies Fetch ചെയ്യുന്നു
+      # 4. Dependencies Fetch ചെയ്യുന്നു
       - name: Get Dependencies
         run: flutter pub get
 
-      # 4. APK ബിൽഡ് ചെയ്യുന്നു
+      # 5. APK ബിൽഡ് ചെയ്യുന്നു
       - name: Build APK
         run: flutter build apk --release --no-tree-shake-icons
 
-      # 5. Artifact അപ്‌ലോഡ് ചെയ്യുന്നു
+      # 6. Artifact അപ്‌ലോഡ് ചെയ്യുന്നു
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
