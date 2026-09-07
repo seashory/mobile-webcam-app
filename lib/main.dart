@@ -43,11 +43,10 @@ class CameraStreamScreen extends StatefulWidget {
 
 class _CameraStreamScreenState extends State<CameraStreamScreen> {
   CameraController? _cameraController;
-  StreamController<Uint8List>? _frameStreamController;
-  HttpServer? _server;
+  StreamController<List<int>>? _frameStreamController;
+  dynamic _server;
   
   bool _isStreaming = false;
-  bool _isProcessingFrame = false;
   String _ipAddress = 'Fetching IP...';
   String _errorMessage = '';
   final int _port = 8080;
@@ -70,7 +69,7 @@ class _CameraStreamScreenState extends State<CameraStreamScreen> {
       final info = NetworkInfo();
       String? ip = await info.getWifiIP();
       setState(() {
-        _ipAddress = ip ?? '127.0.0.1';
+        _ipAddress = ip ?? '127.0.0.1 (USB Active)';
       });
     } catch (e) {
       setState(() {
@@ -89,53 +88,39 @@ class _CameraStreamScreenState extends State<CameraStreamScreen> {
       imageFormatGroup: ImageFormatGroup.jpeg,
     );
 
-    try {
-      await _cameraController!.initialize();
-      if (mounted) setState(() {});
-    } catch (e) {
-      setState(() {
-        _errorMessage = 'Camera Init Error: $e';
-      });
-    }
+    await _cameraController!.initialize();
+    if (mounted) setState(() {});
   }
 
   Future<void> _startStreaming() async {
-    if (_cameraController == null || !_cameraController!.value.isInitialized) {
-      setState(() {
-        _errorMessage = 'Camera not ready!';
-      });
-      return;
-    }
+    if (_cameraController == null || !_cameraController!.value.isInitialized) return;
 
     setState(() {
       _errorMessage = '';
     });
 
     try {
-      _frameStreamController = StreamController<Uint8List>.broadcast();
+      _frameStreamController = StreamController<List<int>>.broadcast();
 
-      var handler = const Pipeline().addHandler((Request request) async {
+      var handler = const Pipeline().addHandler((Request request) {
         if (request.url.path == 'video') {
-          final stream = _frameStreamController!.stream.transform(
-            StreamTransformer<Uint8List, List<int>>.fromHandlers(
-              handleData: (data, sink) {
-                final header = '--boundary\r\n'
-                    'Content-Type: image/jpeg\r\n'
-                    'Content-Length: ${data.length}\r\n\r\n';
-                sink.add(header.codeUnits);
-                sink.add(data);
-                sink.add('\r\n'.codeUnits);
-              },
-            ),
-          );
-
           return Response.ok(
-            stream,
+            _frameStreamController!.stream.map((frame) {
+              return [
+                '--boundary\r\n',
+                'Content-Type: image/jpeg\r\n',
+                'Content-Length: ${frame.length}\r\n\r\n',
+                ...frame,
+                '\r\n'
+              ];
+            }).transform(StreamTransformer.fromHandlers(handleData: (data, sink) {
+              for (var item in data) {
+                sink.add(item as List<int>);
+              }
+            })),
             headers: {
               'Content-Type': 'multipart/x-mixed-replace; boundary=boundary',
-              'Cache-Control': 'no-cache, no-store, must-revalidate',
-              'Pragma': 'no-cache',
-              'Expires': '0',
+              'Cache-Control': 'no-cache',
               'Connection': 'close',
             },
           );
@@ -143,23 +128,12 @@ class _CameraStreamScreenState extends State<CameraStreamScreen> {
         return Response.notFound('Not Found');
       });
 
-      // HttpServer വിശ്വസനീയമായ രീതിയിൽ സ്റ്റാറ്റസ് ബൈൻഡ് ചെയ്യുന്നു
-      _server = await io.serve(handler, InternetAddress.anyIPv4, _port, shared: true);
+      _server = await io.serve(handler, InternetAddress.anyIPv4, _port);
 
-      await _cameraController!.startImageStream((CameraImage image) {
-        if (_isProcessingFrame || _frameStreamController == null || _frameStreamController!.isClosed) {
-          return;
-        }
-        _isProcessingFrame = true;
-
-        try {
-          if (image.planes.isNotEmpty) {
-            _frameStreamController!.add(image.planes[0].bytes);
-          }
-        } catch (e) {
-          debugPrint('Frame Stream Error: $e');
-        } finally {
-          _isProcessingFrame = false;
+      _cameraController!.startImageStream((CameraImage image) {
+        if (_frameStreamController != null && !_frameStreamController!.isClosed) {
+          Uint8List bytes = image.planes[0].bytes;
+          _frameStreamController!.add(bytes);
         }
       });
 
@@ -167,29 +141,19 @@ class _CameraStreamScreenState extends State<CameraStreamScreen> {
         _isStreaming = true;
       });
     } catch (e) {
-      await _stopStreaming();
       setState(() {
-        _isStreaming = false;
         _errorMessage = 'Server Error: $e';
+        _isStreaming = false;
       });
     }
   }
 
   Future<void> _stopStreaming() async {
     try {
-      if (_cameraController != null && _cameraController!.value.isStreamingImages) {
-        await _cameraController?.stopImageStream();
-      }
-    } catch (_) {}
-
-    try {
+      await _cameraController?.stopImageStream();
       await _frameStreamController?.close();
-    } catch (_) {}
-
-    try {
       if (_server != null) {
-        await _server?.close(force: true);
-        _server = null;
+        await _server.close();
       }
     } catch (_) {}
 
@@ -236,20 +200,20 @@ class _CameraStreamScreenState extends State<CameraStreamScreen> {
                 ? CameraPreview(_cameraController!)
                 : const Center(child: CircularProgressIndicator()),
           ),
+          if (_errorMessage.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Text(
+                _errorMessage,
+                style: const TextStyle(color: Colors.redAccent, fontSize: 13),
+                textAlign: TextAlign.center,
+              ),
+            ),
           Container(
             padding: const EdgeInsets.all(16.0),
             color: Colors.black87,
             child: Column(
               children: [
-                if (_errorMessage.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8.0),
-                    child: Text(
-                      _errorMessage,
-                      style: const TextStyle(color: Colors.redAccent, fontSize: 13),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
                 SelectableText(
                   _isStreaming
                       ? 'Wi-Fi URL: http://$_ipAddress:$_port/video'
