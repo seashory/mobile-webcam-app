@@ -25,8 +25,8 @@ jobs:
           flutter-version: '3.19.0'
           channel: 'stable'
 
-      # lib ഫോൾഡർ മാറ്റാതെ തന്നെ Android സ്ട്രക്ചർ മാത്രം നിർമ്മിക്കുന്നു
-      - name: Reconstruct Android Project Safely
+      # 1. lib ഫോൾഡർ താൽക്കാലികമായി മാറ്റിവെച്ച് പ്രൊജക്റ്റ് സ്ട്രക്ചർ ഉണ്ടാക്കുന്നു
+      - name: Reconstruct Android Structure
         run: |
           mkdir -p lib_temp
           cp -r lib/* lib_temp/
@@ -34,12 +34,20 @@ jobs:
           cp -r lib_temp/* lib/
           rm -rf lib_temp
 
+      # 2. വിട്ടുപോയ എല്ലാ പാക്കേജുകളും കൃത്യമായി ആഡ് ചെയ്യുന്നു
+      - name: Add Required Dependencies
+        run: |
+          flutter pub add camera shelf shelf_router network_info_plus permission_handler cupertino_icons
+
+      # 3. Dependencies Fetch ചെയ്യുന്നു
       - name: Get Dependencies
         run: flutter pub get
 
+      # 4. APK ബിൽഡ് ചെയ്യുന്നു
       - name: Build APK
         run: flutter build apk --release --no-tree-shake-icons
 
+      # 5. Artifact അപ്‌ലോഡ് ചെയ്യുന്നു
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
