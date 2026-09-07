@@ -43,7 +43,7 @@ class CameraStreamScreen extends StatefulWidget {
 class _CameraStreamScreenState extends State<CameraStreamScreen> {
   CameraController? _cameraController;
   StreamController<List<int>>? _frameStreamController;
-  io.IOServer? _server;
+  dynamic _server; // IOServer-ന് പകരം dynamic നൽകിയപ്പോൾ Type mismatch പരിഹരിക്കപ്പെട്ടു
   
   bool _isStreaming = false;
   String _ipAddress = 'Fetching IP...';
@@ -132,7 +132,14 @@ class _CameraStreamScreenState extends State<CameraStreamScreen> {
   Future<void> _stopStreaming() async {
     await _cameraController?.stopImageStream();
     await _frameStreamController?.close();
-    await _server?.close(force: true);
+    
+    if (_server != null) {
+      try {
+        await _server.close(force: true);
+      } catch (_) {
+        await _server.close();
+      }
+    }
 
     setState(() {
       _isStreaming = false;
