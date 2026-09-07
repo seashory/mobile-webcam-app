@@ -1,5 +1,5 @@
-name: mobile_webcam
-description: "A mobile live stream camera app for Windows 11"
+name: mobile_webcam_app
+description: "Mobile Stream Cam App"
 publish_to: 'none'
 version: 1.0.0+1
 
