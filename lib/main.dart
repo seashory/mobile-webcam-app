@@ -42,10 +42,11 @@ class CameraStreamScreen extends StatefulWidget {
 
 class _CameraStreamScreenState extends State<CameraStreamScreen> {
   CameraController? _cameraController;
-  StreamController<List<int>>? _frameStreamController;
-  dynamic _server; // IOServer-ന് പകരം dynamic നൽകിയപ്പോൾ Type mismatch പരിഹരിക്കപ്പെട്ടു
+  StreamController<Uint8List>? _frameStreamController;
+  dynamic _server;
   
   bool _isStreaming = false;
+  bool _isProcessingFrame = false;
   String _ipAddress = 'Fetching IP...';
   final int _port = 8080;
   int _selectedCameraIndex = 0;
@@ -66,7 +67,7 @@ class _CameraStreamScreenState extends State<CameraStreamScreen> {
     final info = NetworkInfo();
     String? ip = await info.getWifiIP();
     setState(() {
-      _ipAddress = ip ?? '127.0.0.1 (USB Active)';
+      _ipAddress = ip ?? '127.0.0.1';
     });
   }
 
@@ -87,27 +88,30 @@ class _CameraStreamScreenState extends State<CameraStreamScreen> {
   Future<void> _startStreaming() async {
     if (_cameraController == null || !_cameraController!.value.isInitialized) return;
 
-    _frameStreamController = StreamController<List<int>>.broadcast();
+    _frameStreamController = StreamController<Uint8List>.broadcast();
 
-    var handler = const Pipeline().addHandler((Request request) {
+    var handler = const Pipeline().addHandler((Request request) async {
       if (request.url.path == 'video') {
+        final stream = _frameStreamController!.stream.transform(
+          StreamTransformer<Uint8List, List<int>>.fromHandlers(
+            handleData: (data, sink) {
+              final header = '--boundary\r\n'
+                  'Content-Type: image/jpeg\r\n'
+                  'Content-Length: ${data.length}\r\n\r\n';
+              sink.add(header.codeUnits);
+              sink.add(data);
+              sink.add('\r\n'.codeUnits);
+            },
+          ),
+        );
+
         return Response.ok(
-          _frameStreamController!.stream.map((frame) {
-            return [
-              '--boundary\r\n',
-              'Content-Type: image/jpeg\r\n',
-              'Content-Length: ${frame.length}\r\n\r\n',
-              ...frame,
-              '\r\n'
-            ];
-          }).transform(StreamTransformer.fromHandlers(handleData: (data, sink) {
-            for (var item in data) {
-              sink.add(item as List<int>);
-            }
-          })),
+          stream,
           headers: {
             'Content-Type': 'multipart/x-mixed-replace; boundary=boundary',
-            'Cache-Control': 'no-cache',
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0',
             'Connection': 'close',
           },
         );
@@ -117,10 +121,23 @@ class _CameraStreamScreenState extends State<CameraStreamScreen> {
 
     _server = await io.serve(handler, '0.0.0.0', _port);
 
-    _cameraController!.startImageStream((CameraImage image) {
-      if (_frameStreamController != null && !_frameStreamController!.isClosed) {
-        Uint8List bytes = image.planes[0].bytes;
-        _frameStreamController!.add(bytes);
+    _cameraController!.startImageStream((CameraImage image) async {
+      if (_isProcessingFrame || _frameStreamController == null || _frameStreamController!.isClosed) {
+        return;
+      }
+      _isProcessingFrame = true;
+
+      try {
+        if (image.format.group == ImageFormatGroup.jpeg || image.planes.length == 1) {
+          _frameStreamController!.add(image.planes[0].bytes);
+        } else {
+          // YUV പ്ലെയിൻ ഉള്ള ആദ്യ ബൈറ്റ് പ്രോസസ്സ് ചെയ്യുന്നു
+          _frameStreamController!.add(image.planes[0].bytes);
+        }
+      } catch (e) {
+        debugPrint('Frame Stream Error: $e');
+      } finally {
+        _isProcessingFrame = false;
       }
     });
 
@@ -130,7 +147,9 @@ class _CameraStreamScreenState extends State<CameraStreamScreen> {
   }
 
   Future<void> _stopStreaming() async {
-    await _cameraController?.stopImageStream();
+    if (_cameraController != null && _cameraController!.value.isStreamingVideoRPS) {
+      await _cameraController?.stopImageStream();
+    }
     await _frameStreamController?.close();
     
     if (_server != null) {
