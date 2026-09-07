@@ -66,7 +66,7 @@ class _CameraStreamScreenState extends State<CameraStreamScreen> {
     final info = NetworkInfo();
     String? ip = await info.getWifiIP();
     setState(() {
-      _ipAddress = ip ?? '127.0.0.1 (USB Tethering Active)';
+      _ipAddress = ip ?? '127.0.0.1 (USB Active)';
     });
   }
 
