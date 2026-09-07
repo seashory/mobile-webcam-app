@@ -25,7 +25,7 @@ jobs:
           flutter-version: '3.19.0'
           channel: 'stable'
 
-      # 1. lib ഫോൾഡർ താൽക്കാലികമായി മാറ്റിവെച്ച് പ്രൊജക്റ്റ് സ്ട്രക്ചർ ഉണ്ടാക്കുന്നു
+      # 1. Project Structure Reconstruct ചെയ്യൽ
       - name: Reconstruct Android Structure
         run: |
           mkdir -p lib_temp
@@ -34,12 +34,12 @@ jobs:
           cp -r lib_temp/* lib/
           rm -rf lib_temp
 
-      # 2. Fast Download-നായി Gradle Wrapper URL 'bin.zip' ആക്കി മാറ്റുന്നു
+      # 2. Fast Download-നായി Gradle Distribution URL മാറ്റുന്നു
       - name: Optimize Gradle Distribution URL
         run: |
           sed -i 's/gradle-7.6.3-all.zip/gradle-7.6.3-bin.zip/g' android/gradle/wrapper/gradle-wrapper.properties
 
-      # 3. minSdkVersion 21 ആക്കി അപ്‌ഡേറ്റ് ചെയ്യുന്നു
+      # 3. minSdkVersion 21 ആക്കി ഉയർത്തുന്നു
       - name: Update minSdkVersion to 21
         run: |
           sed -i 's/minSdkVersion .*/minSdkVersion 21/g' android/app/build.gradle
@@ -54,21 +54,18 @@ jobs:
       - name: Get Dependencies
         run: flutter pub get
 
-      # 6. Gradle Network 504 Timeout തടയാൻ Retry Logic ഉപയോഗിച്ച് APK ബിൽഡ് ചെയ്യുന്നു
-      - name: Build APK with Retry
-        run: |
-          n=0
-          until [ "$n" -ge 3 ]
-          do
-             flutter build apk --release --no-tree-shake-icons && break
-             n=$((n+1))
-             echo "Build failed due to network timeout, retrying ($n/3)..."
-             sleep 5
-          done
+      # 6. APK ബിൽഡ് ചെയ്യുന്നു
+      - name: Build APK
+        run: flutter build apk --release --no-tree-shake-icons
 
-      # 7. Artifact അപ്‌ലോഡ് ചെയ്യുന്നു
+      # 7. ജനറേറ്റ് ചെയ്ത APK ഫയൽ കൃത്യമായി കണ്ടെത്തുന്നുണ്ടോ എന്ന് തപ്പുക
+      - name: Verify APK Generated
+        run: ls -la build/app/outputs/flutter-apk/
+
+      # 8. Artifact സുരക്ഷിതമായി അപ്‌ലോഡ് ചെയ്യുന്നു
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: Mobile-Stream-Cam-APK
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: build/app/outputs/flutter-apk/*.apk
+          if-no-files-found: error
