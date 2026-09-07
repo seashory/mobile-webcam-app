@@ -34,26 +34,39 @@ jobs:
           cp -r lib_temp/* lib/
           rm -rf lib_temp
 
-      # 2. minSdkVersion 21 ആക്കി അപ്‌ഡേറ്റ് ചെയ്യുന്നു
+      # 2. Fast Download-നായി Gradle Wrapper URL 'bin.zip' ആക്കി മാറ്റുന്നു
+      - name: Optimize Gradle Distribution URL
+        run: |
+          sed -i 's/gradle-7.6.3-all.zip/gradle-7.6.3-bin.zip/g' android/gradle/wrapper/gradle-wrapper.properties
+
+      # 3. minSdkVersion 21 ആക്കി അപ്‌ഡേറ്റ് ചെയ്യുന്നു
       - name: Update minSdkVersion to 21
         run: |
           sed -i 's/minSdkVersion .*/minSdkVersion 21/g' android/app/build.gradle
           sed -i 's/flutter.minSdkVersion/21/g' android/app/build.gradle
 
-      # 3. വിട്ടുപോയ എല്ലാ പാക്കേജുകളും ചേർക്കുന്നു
+      # 4. വിട്ടുപോയ എല്ലാ പാക്കേജുകളും ചേർക്കുന്നു
       - name: Add Required Dependencies
         run: |
           flutter pub add camera shelf shelf_router network_info_plus permission_handler cupertino_icons
 
-      # 4. Dependencies Fetch ചെയ്യുന്നു
+      # 5. Dependencies Fetch ചെയ്യുന്നു
       - name: Get Dependencies
         run: flutter pub get
 
-      # 5. APK ബിൽഡ് ചെയ്യുന്നു
-      - name: Build APK
-        run: flutter build apk --release --no-tree-shake-icons
+      # 6. Gradle Network 504 Timeout തടയാൻ Retry Logic ഉപയോഗിച്ച് APK ബിൽഡ് ചെയ്യുന്നു
+      - name: Build APK with Retry
+        run: |
+          n=0
+          until [ "$n" -ge 3 ]
+          do
+             flutter build apk --release --no-tree-shake-icons && break
+             n=$((n+1))
+             echo "Build failed due to network timeout, retrying ($n/3)..."
+             sleep 5
+          done
 
-      # 6. Artifact അപ്‌ലോഡ് ചെയ്യുന്നു
+      # 7. Artifact അപ്‌ലോഡ് ചെയ്യുന്നു
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
