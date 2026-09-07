@@ -128,12 +128,7 @@ class _CameraStreamScreenState extends State<CameraStreamScreen> {
       _isProcessingFrame = true;
 
       try {
-        if (image.format.group == ImageFormatGroup.jpeg || image.planes.length == 1) {
-          _frameStreamController!.add(image.planes[0].bytes);
-        } else {
-          // YUV പ്ലെയിൻ ഉള്ള ആദ്യ ബൈറ്റ് പ്രോസസ്സ് ചെയ്യുന്നു
-          _frameStreamController!.add(image.planes[0].bytes);
-        }
+        _frameStreamController!.add(image.planes[0].bytes);
       } catch (e) {
         debugPrint('Frame Stream Error: $e');
       } finally {
@@ -147,7 +142,8 @@ class _CameraStreamScreenState extends State<CameraStreamScreen> {
   }
 
   Future<void> _stopStreaming() async {
-    if (_cameraController != null && _cameraController!.value.isStreamingVideoRPS) {
+    // isStreamingVideoRPS-ന് പകരം isStreamingImages ഉപയോഗിച്ച് സുരക്ഷിതമായി സ്റ്റോപ്പ് ചെയ്യുന്നു
+    if (_cameraController != null && _cameraController!.value.isStreamingImages) {
       await _cameraController?.stopImageStream();
     }
     await _frameStreamController?.close();
