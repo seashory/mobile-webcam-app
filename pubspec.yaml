@@ -15,6 +15,7 @@ dependencies:
   network_info_plus: ^5.0.1
   permission_handler: ^11.3.1
   cupertino_icons: ^1.0.2
+  image: ^4.1.7
 
 dev_dependencies:
   flutter_test:
