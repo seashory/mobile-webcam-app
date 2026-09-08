@@ -10,65 +10,29 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Set up Java
+      - name: Set up Java JDK
         uses: actions/setup-java@v4
         with:
-          distribution: 'zulu'
+          distribution: 'temurin'
           java-version: '17'
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.19.0'
+          flutter-version: '3.19.x'
           channel: 'stable'
 
-      # 1. lib ഫോൾഡർ താൽക്കാലികമായി മാറ്റിവെച്ച് പ്രൊജക്റ്റ് സ്ട്രക്ചർ ഉണ്ടാക്കുന്നു
-      - name: Reconstruct Android Structure
-        run: |
-          mkdir -p lib_temp
-          cp -r lib/* lib_temp/
-          flutter create . --project-name=mobile_webcam_app --platforms=android --org=com.example --overwrite
-          cp -r lib_temp/* lib/
-          rm -rf lib_temp
-
-      # 2. AndroidManifest.xml-ൽ Internet Permissons ചേർക്കുന്നു
-      - name: Add Internet Permissions
-        run: |
-          sed -i '/<manifest/a \    <uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>\n    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>' android/app/src/main/AndroidManifest.xml
-
-      # 3. minSdkVersion 21 ആക്കി അപ്‌ഡേറ്റ് ചെയ്യുന്നു
-      - name: Update minSdkVersion to 21
-        run: |
-          sed -i 's/minSdkVersion .*/minSdkVersion 21/g' android/app/build.gradle
-          sed -i 's/flutter.minSdkVersion/21/g' android/app/build.gradle
-
-      # 4. വിട്ടുപോയ എല്ലാ പാക്കേജുകളും ചേർക്കുന്നു
-      - name: Add Required Dependencies
-        run: |
-          flutter pub add camera shelf shelf_router network_info_plus permission_handler cupertino_icons
-
-      # 5. Dependencies Fetch ചെയ്യുന്നു
-      - name: Get Dependencies
+      - name: Install Dependencies
         run: flutter pub get
 
-      # 6. Retry Logic ഉപയോഗിച്ച് APK ബിൽഡ് ചെയ്യുന്നു
-      - name: Build APK with Retry
-        run: |
-          n=0
-          until [ "$n" -ge 3 ]
-          do
-             flutter build apk --release --no-tree-shake-icons && break
-             n=$((n+1))
-             echo "Build failed due to network timeout, retrying ($n/3)..."
-             sleep 5
-          done
+      - name: Build APK
+        run: flutter build apk --release
 
-      # 7. Artifact അപ്‌ലോഡ് ചെയ്യുന്നു
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Mobile-Stream-Cam-APK
+          name: app-release-apk
           path: build/app/outputs/flutter-apk/app-release.apk
