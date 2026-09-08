@@ -3,8 +3,6 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
-import 'package:shelf/shelf.dart';
-import 'package:shelf/shelf_io.dart' as io;
 import 'package:network_info_plus/network_info_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -43,14 +41,13 @@ class CameraStreamScreen extends StatefulWidget {
 
 class _CameraStreamScreenState extends State<CameraStreamScreen> {
   CameraController? _cameraController;
-  StreamController<List<int>>? _frameStreamController;
-  dynamic _server;
+  StreamController<Uint8List>? _frameStreamController;
+  HttpServer? _server;
   
   bool _isStreaming = false;
   String _ipAddress = 'Fetching IP...';
   String _errorMessage = '';
   final int _port = 8080;
-  int _selectedCameraIndex = 0;
 
   @override
   void initState() {
@@ -69,9 +66,9 @@ class _CameraStreamScreenState extends State<CameraStreamScreen> {
       final info = NetworkInfo();
       String? ip = await info.getWifiIP();
       setState(() {
-        _ipAddress = ip ?? '127.0.0.1 (USB Active)';
+        _ipAddress = ip ?? '127.0.0.1';
       });
-    } catch (e) {
+    } catch (_) {
       setState(() {
         _ipAddress = '127.0.0.1';
       });
@@ -82,7 +79,7 @@ class _CameraStreamScreenState extends State<CameraStreamScreen> {
     if (_cameras.isEmpty) return;
 
     _cameraController = CameraController(
-      _cameras[_selectedCameraIndex],
+      _cameras[0],
       ResolutionPreset.medium,
       enableAudio: false,
       imageFormatGroup: ImageFormatGroup.jpeg,
@@ -100,40 +97,40 @@ class _CameraStreamScreenState extends State<CameraStreamScreen> {
     });
 
     try {
-      _frameStreamController = StreamController<List<int>>.broadcast();
+      _frameStreamController = StreamController<Uint8List>.broadcast();
 
-      var handler = const Pipeline().addHandler((Request request) {
-        if (request.url.path == 'video') {
-          return Response.ok(
-            _frameStreamController!.stream.map((frame) {
-              return [
-                '--boundary\r\n',
-                'Content-Type: image/jpeg\r\n',
-                'Content-Length: ${frame.length}\r\n\r\n',
-                ...frame,
-                '\r\n'
-              ];
-            }).transform(StreamTransformer.fromHandlers(handleData: (data, sink) {
-              for (var item in data) {
-                sink.add(item as List<int>);
-              }
-            })),
-            headers: {
-              'Content-Type': 'multipart/x-mixed-replace; boundary=boundary',
-              'Cache-Control': 'no-cache',
-              'Connection': 'close',
-            },
-          );
+      _server = await HttpServer.bind(InternetAddress.anyIPv4, _port);
+      
+      _server!.listen((HttpRequest request) async {
+        if (request.uri.path == '/video') {
+          request.response.headers.set('Content-Type', 'multipart/x-mixed-replace; boundary=frame');
+          request.response.headers.set('Cache-Control', 'no-cache');
+          request.response.headers.set('Connection', 'close');
+
+          await for (Uint8List frame in _frameStreamController!.stream) {
+            try {
+              request.response.write('--frame\r\n');
+              request.response.write('Content-Type: image/jpeg\r\n');
+              request.response.write('Content-Length: ${frame.length}\r\n\r\n');
+              request.response.add(frame);
+              request.response.write('\r\n');
+              await request.response.flush();
+            } catch (_) {
+              break;
+            }
+          }
+        } else {
+          request.response.statusCode = HttpStatus.notFound;
+          request.response.write('Not Found');
+          await request.response.close();
         }
-        return Response.notFound('Not Found');
       });
-
-      _server = await io.serve(handler, InternetAddress.anyIPv4, _port);
 
       _cameraController!.startImageStream((CameraImage image) {
         if (_frameStreamController != null && !_frameStreamController!.isClosed) {
-          Uint8List bytes = image.planes[0].bytes;
-          _frameStreamController!.add(bytes);
+          if (image.planes.isNotEmpty) {
+            _frameStreamController!.add(image.planes[0].bytes);
+          }
         }
       });
 
@@ -152,22 +149,12 @@ class _CameraStreamScreenState extends State<CameraStreamScreen> {
     try {
       await _cameraController?.stopImageStream();
       await _frameStreamController?.close();
-      if (_server != null) {
-        await _server.close();
-      }
+      await _server?.close(force: true);
     } catch (_) {}
 
     setState(() {
       _isStreaming = false;
     });
-  }
-
-  void _switchCamera() async {
-    if (_cameras.length < 2) return;
-    if (_isStreaming) await _stopStreaming();
-
-    _selectedCameraIndex = (_selectedCameraIndex + 1) % _cameras.length;
-    await _initCamera();
   }
 
   @override
@@ -180,19 +167,7 @@ class _CameraStreamScreenState extends State<CameraStreamScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Mobile Stream Cam'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.switch_camera),
-            onPressed: _switchCamera,
-          ),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _getIPAddress,
-          )
-        ],
-      ),
+      appBar: AppBar(title: const Text('Mobile Stream Cam')),
       body: Column(
         children: [
           Expanded(
@@ -203,11 +178,7 @@ class _CameraStreamScreenState extends State<CameraStreamScreen> {
           if (_errorMessage.isNotEmpty)
             Padding(
               padding: const EdgeInsets.all(8.0),
-              child: Text(
-                _errorMessage,
-                style: const TextStyle(color: Colors.redAccent, fontSize: 13),
-                textAlign: TextAlign.center,
-              ),
+              child: Text(_errorMessage, style: const TextStyle(color: Colors.redAccent)),
             ),
           Container(
             padding: const EdgeInsets.all(16.0),
@@ -216,18 +187,10 @@ class _CameraStreamScreenState extends State<CameraStreamScreen> {
               children: [
                 SelectableText(
                   _isStreaming
-                      ? 'Wi-Fi URL: http://$_ipAddress:$_port/video'
+                      ? 'Wi-Fi: http://$_ipAddress:$_port/video\nUSB: http://localhost:$_port/video'
                       : 'Press Start to Stream',
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.greenAccent,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'USB / ADB URL: http://localhost:$_port/video',
-                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.greenAccent),
                 ),
                 const SizedBox(height: 12),
                 ElevatedButton.icon(
