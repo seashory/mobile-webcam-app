@@ -31,11 +31,12 @@ jobs:
           flutter create . --project-name=mobile_webcam_app --platforms=android
           flutter pub get
 
-      # minSdk 21 ആക്കി അപ്‌ഡേറ്റ് ചെയ്യുന്ന സ്റ്റെപ്പ്
-      - name: Set Minimum Android SDK Version
+      # minSdk 21 ആക്കുന്നതിനൊപ്പം ഇന്റർനെറ്റ് പെർമിഷൻ കൊടുക്കുന്ന സ്റ്റെപ്പ്
+      - name: Configure Android Manifest and Build Settings
         run: |
           sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 21/g' android/app/build.gradle
           sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 21/g' android/app/build.gradle
+          sed -i '/<application/i \    <uses-permission android:name="android.permission.INTERNET"/>' android/app/src/main/AndroidManifest.xml
 
       - name: Build APK Release
         run: flutter build apk --release
