@@ -82,7 +82,7 @@ class _CameraStreamScreenState extends State<CameraStreamScreen> {
 
     _cameraController = CameraController(
       _cameras[0],
-      ResolutionPreset.low, // സ്ട്രീമിംഗ് സ്മൂത്ത് ആക്കാൻ Low/Medium നൽകുക
+      ResolutionPreset.low,
       enableAudio: false,
     );
 
