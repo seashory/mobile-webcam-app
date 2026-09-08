@@ -43,6 +43,7 @@ class _CameraStreamScreenState extends State<CameraStreamScreen> {
   CameraController? _cameraController;
   HttpServer? _server;
   
+  int _selectedCameraIndex = 0; // 0: Back Camera, 1: Front Camera
   bool _isStreaming = false;
   String _ipAddress = 'Fetching IP...';
   String _statusMessage = 'Press Start';
@@ -57,7 +58,7 @@ class _CameraStreamScreenState extends State<CameraStreamScreen> {
 
   Future<void> _requestPermissions() async {
     await [Permission.camera].request();
-    _initCamera();
+    _initCamera(_selectedCameraIndex);
   }
 
   Future<void> _getIPAddress() async {
@@ -74,17 +75,31 @@ class _CameraStreamScreenState extends State<CameraStreamScreen> {
     }
   }
 
-  Future<void> _initCamera() async {
+  // ക്യാമറ തുടക്കത്തിൽ ക്രമീകരിക്കാനും (ResolutionPreset.medium) ക്യാമറ സ്വിച്ച് ചെയ്യാനും
+  Future<void> _initCamera(int cameraIndex) async {
     if (_cameras.isEmpty) return;
 
+    if (_cameraController != null) {
+      await _cameraController!.dispose();
+    }
+
     _cameraController = CameraController(
-      _cameras[0],
-      ResolutionPreset.low,
+      _cameras[cameraIndex],
+      ResolutionPreset.medium, // സ്ക്രീൻ വലിപ്പവും ക്വാളിറ്റിയും കൂട്ടാൻ Medium റെസല്യൂഷൻ നൽകി
       enableAudio: false,
     );
 
     await _cameraController!.initialize();
     if (mounted) setState(() {});
+  }
+
+  // ഫ്രണ്ട് / ബാക്ക് ക്യാമറ സ്വിച്ച് ചെയ്യാനുള്ള ഫംഗ്ഷൻ
+  void _toggleCamera() {
+    if (_cameras.length < 2) return;
+    setState(() {
+      _selectedCameraIndex = (_selectedCameraIndex == 0) ? 1 : 0;
+    });
+    _initCamera(_selectedCameraIndex);
   }
 
   Future<void> _startStreaming() async {
@@ -144,12 +159,26 @@ class _CameraStreamScreenState extends State<CameraStreamScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('My Live Webcam')),
+      appBar: AppBar(
+        title: const Text('My Live Webcam'),
+        actions: [
+          // ഫ്രണ്ട്/ബാക്ക് ക്യാമറ മാറ്റാനുള്ള ഐക്കൺ ബട്ടൺ
+          if (_cameras.length > 1)
+            IconButton(
+              icon: const Icon(Icons.switch_camera),
+              onPressed: _isStreaming ? null : _toggleCamera, // സ്ട്രീമിംഗ് നടക്കുമ്പോൾ ക്യാമറ മാറാതിരിക്കാൻ
+              tooltip: 'Switch Camera',
+            ),
+        ],
+      ),
       body: Column(
         children: [
           Expanded(
             child: _cameraController != null && _cameraController!.value.isInitialized
-                ? CameraPreview(_cameraController!)
+                ? AspectRatio(
+                    aspectRatio: _cameraController!.value.aspectRatio,
+                    child: CameraPreview(_cameraController!),
+                  )
                 : const Center(child: CircularProgressIndicator()),
           ),
           Container(
