@@ -28,7 +28,7 @@ jobs:
       - name: Recreate Clean Android Configuration
         run: |
           rm -rf android
-          flutter create . --platforms=android
+          flutter create . --project-name=mobile_webcam_app --platforms=android
           flutter pub get
 
       - name: Build APK Release
