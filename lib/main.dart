@@ -85,7 +85,7 @@ class _CameraStreamScreenState extends State<CameraStreamScreen> {
 
     _cameraController = CameraController(
       _cameras[cameraIndex],
-      ResolutionPreset.medium, // സ്ക്രീൻ വലിപ്പവും ക്വാളിറ്റിയും കൂട്ടാൻ Medium റെസല്യൂഷൻ നൽകി
+      ResolutionPreset.high, // സ്ക്രീൻ വലിപ്പവും ക്വാളിറ്റിയും കൂട്ടാൻ Medium റെസല്യൂഷൻ നൽകി
       enableAudio: false,
     );
 
