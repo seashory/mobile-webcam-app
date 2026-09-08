@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:network_info_plus/network_info_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:image/image.dart' as img;
 
 List<CameraDescription> _cameras = [];
 
@@ -45,6 +46,7 @@ class _CameraStreamScreenState extends State<CameraStreamScreen> {
   HttpServer? _server;
   
   bool _isStreaming = false;
+  bool _isProcessingFrame = false;
   String _ipAddress = 'Fetching IP...';
   String _errorMessage = '';
   final int _port = 8080;
@@ -80,13 +82,40 @@ class _CameraStreamScreenState extends State<CameraStreamScreen> {
 
     _cameraController = CameraController(
       _cameras[0],
-      ResolutionPreset.medium,
+      ResolutionPreset.low, // സ്ട്രീമിംഗ് സ്മൂത്ത് ആക്കാൻ Low/Medium നൽകുക
       enableAudio: false,
-      imageFormatGroup: ImageFormatGroup.jpeg,
     );
 
     await _cameraController!.initialize();
     if (mounted) setState(() {});
+  }
+
+  Uint8List _convertYUV420ToJpeg(CameraImage image) {
+    final int width = image.width;
+    final int height = image.height;
+    var imgImage = img.Image(width: width, height: height);
+
+    final Plane yPlane = image.planes[0];
+    final Plane uPlane = image.planes[1];
+    final Plane vPlane = image.planes[2];
+
+    for (int y = 0; y < height; y++) {
+      for (int x = 0; x < width; x++) {
+        final int yIndex = y * yPlane.bytesPerRow + x;
+        final int uvIndex = (y ~/ 2) * uPlane.bytesPerRow + (x ~/ 2) * uPlane.bytesPerPixel!;
+
+        final int yValue = yPlane.bytes[yIndex];
+        final int uValue = uPlane.bytes[uvIndex];
+        final int vValue = vPlane.bytes[uvIndex];
+
+        int r = (yValue + 1.370705 * (vValue - 128)).round().clamp(0, 255);
+        int g = (yValue - 0.337633 * (uValue - 128) - 0.698001 * (vValue - 128)).round().clamp(0, 255);
+        int b = (yValue + 1.732446 * (uValue - 128)).round().clamp(0, 255);
+
+        imgImage.setPixelRgb(x, y, r, g, b);
+      }
+    }
+    return Uint8List.fromList(img.encodeJpg(imgImage, quality: 50));
   }
 
   Future<void> _startStreaming() async {
@@ -105,7 +134,6 @@ class _CameraStreamScreenState extends State<CameraStreamScreen> {
         if (request.uri.path == '/video') {
           request.response.headers.set('Content-Type', 'multipart/x-mixed-replace; boundary=frame');
           request.response.headers.set('Cache-Control', 'no-cache');
-          request.response.headers.set('Connection', 'close');
 
           await for (Uint8List frame in _frameStreamController!.stream) {
             try {
@@ -126,12 +154,18 @@ class _CameraStreamScreenState extends State<CameraStreamScreen> {
         }
       });
 
-      _cameraController!.startImageStream((CameraImage image) {
-        if (_frameStreamController != null && !_frameStreamController!.isClosed) {
-          if (image.planes.isNotEmpty) {
-            _frameStreamController!.add(image.planes[0].bytes);
+      _cameraController!.startImageStream((CameraImage image) async {
+        if (_isProcessingFrame) return;
+        _isProcessingFrame = true;
+
+        try {
+          if (_frameStreamController != null && !_frameStreamController!.isClosed) {
+            Uint8List jpegBytes = _convertYUV420ToJpeg(image);
+            _frameStreamController!.add(jpegBytes);
           }
-        }
+        } catch (_) {}
+
+        _isProcessingFrame = false;
       });
 
       setState(() {
