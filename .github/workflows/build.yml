@@ -25,10 +25,10 @@ jobs:
           flutter-version: '3.19.x'
           channel: 'stable'
 
-      # ആൻഡ്രോയിഡ് ബിൽഡ് ഫയലുകൾ തനിയെ ശരിയാക്കുന്ന സ്റ്റെപ്പ്
-      - name: Recreate Android Project Configuration
+      - name: Recreate Clean Android Configuration
         run: |
-          flutter create . --platforms=android --force
+          rm -rf android
+          flutter create . --platforms=android
           flutter pub get
 
       - name: Build APK Release
