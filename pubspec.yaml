@@ -1,5 +1,5 @@
 name: mobile_webcam_app
-description: "Mobile Stream Cam App"
+description: "Simple Mobile Stream Cam App"
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -10,12 +10,9 @@ dependencies:
   flutter:
     sdk: flutter
   camera: ^0.10.5+9
-  shelf: ^1.4.1
-  shelf_router: ^1.1.4
   network_info_plus: ^5.0.1
   permission_handler: ^11.3.1
   cupertino_icons: ^1.0.2
-  image: ^4.1.7
 
 dev_dependencies:
   flutter_test:
